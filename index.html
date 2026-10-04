@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Elf Archery</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b1020; overflow: hidden; font-family: system-ui, sans-serif; }
+  canvas { display: block; touch-action: none; }
+  #hint { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); color: #e8f0ff; background: #0b1020b3;
+          padding: 8px 14px; border-radius: 10px; font-size: 14px; pointer-events: none; text-align: center; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./node_modules/three/build/three.module.js", "three/addons/": "./node_modules/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div id="hint">Desktop: hold <b>mouse / Space</b> to draw, release to shoot &middot; In VR: <b>pinch &amp; hold</b>, release to shoot</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
