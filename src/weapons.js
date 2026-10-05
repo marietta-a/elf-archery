@@ -12,10 +12,10 @@ export const PACKS = [
 ];
 
 export const OUTFITS = [
-  { id: 'ranger', name: 'Forest Ranger', cost: 0, blurb: 'Hooded green cloak.', tunic: 0x3f6b3a, cloak: 0x2a4530, leather: 0x6b4a2b, trim: 0xd9b04a, plate: 0x6b4a2b, eyes: 0x4fae5c, plates: false, halo: false, aura: 0 },
-  { id: 'royal', name: 'Royal Guard', cost: 300, blurb: 'Blue and silver plate.', tunic: 0x2b4f9e, cloak: 0x1b2d63, leather: 0x4a3a2a, trim: 0xe8eef8, plate: 0xc9d3e0, eyes: 0x5fb6ff, plates: true, halo: false, aura: 0 },
-  { id: 'shadow', name: 'Shadow Hunter', cost: 600, blurb: 'Night cloak, violet glow.', tunic: 0x262034, cloak: 0x14101f, leather: 0x2a2433, trim: 0xa66bff, plate: 0x3a3050, eyes: 0xc07aff, plates: true, halo: false, aura: 0xa66bff },
-  { id: 'paladin', name: 'Golden Paladin', cost: 900, blurb: 'Radiant gold, with halo.', tunic: 0xf0ead8, cloak: 0xd8b24a, leather: 0x8a6a2a, trim: 0xffd24a, plate: 0xf2c94a, eyes: 0x7fd6ff, plates: true, halo: true, aura: 0xffe28a },
+  { id: 'ranger', name: 'Elven Warden', cost: 0, blurb: 'Green cape, silver pauldrons.', tunic: 0x2f6b3c, cloak: 0x3b8a35, leather: 0x5a3a20, trim: 0xd9b04a, plate: 0xc9d3e0, hair: 0xe0b850, eyes: 0x2fae5a, plates: false, halo: false, aura: 0 },
+  { id: 'royal', name: 'Royal Guard', cost: 300, blurb: 'Blue and silver plate.', tunic: 0x2b4f9e, cloak: 0x1b2d63, leather: 0x4a3a2a, trim: 0xe8eef8, plate: 0xd5deea, hair: 0xe0b850, eyes: 0x5fb6ff, plates: true, halo: false, aura: 0 },
+  { id: 'shadow', name: 'Shadow Hunter', cost: 600, blurb: 'Night cloak, violet glow.', tunic: 0x262034, cloak: 0x14101f, leather: 0x2a2433, trim: 0xa66bff, plate: 0x4a3f66, hair: 0xcfd4e8, eyes: 0xc07aff, plates: true, halo: false, aura: 0xa66bff },
+  { id: 'paladin', name: 'Golden Paladin', cost: 900, blurb: 'Radiant gold, with halo.', tunic: 0xf0ead8, cloak: 0xd8b24a, leather: 0x8a6a2a, trim: 0xffd24a, plate: 0xf2c94a, hair: 0xf2d27a, eyes: 0x7fd6ff, plates: true, halo: true, aura: 0xffe28a },
 ];
 
 export const ARROW_LENGTH = 0.7;

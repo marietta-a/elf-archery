@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
 import { Sfx } from './audio.js';
 import { createElf } from './elf.js';
@@ -28,6 +29,7 @@ if (camParam) { const v = camParam.split(',').map(Number); DESK_CAM.set(v[0], v[
 camera.position.copy(DESK_CAM); camera.lookAt(DESK_LOOK);
 const DESIGN_EYE = 1.18; // seated eye height the layout is designed around
 
+scene.add(camera); // lets screen-anchored UI (desktop HUD) be a child of the camera
 const world = new THREE.Group(); // recentered/raised in VR so the lane sits at a comfortable seated height
 scene.add(world);
 const scenery = buildScenery(scene); world.add(scenery.group);
@@ -48,6 +50,31 @@ const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save
 const elf = createElf();
 elf.group.position.set(0, 0, ELF_Z);
 world.add(elf.group);
+
+// Character loading. Preferred: a real rigged .glb at assets/models/elf.glb (must contain a skinned mesh, or be a
+// flat image card). Anything else (e.g. an un-skinned box) is ignored and the cutout art cards are used instead,
+// and if those are missing the procedural elf stays.
+async function loadElfCard() {
+  try {
+    const tl = new THREE.TextureLoader();
+    const [f, b] = await Promise.all([tl.loadAsync('./assets/models/elf-card-front.webp'), tl.loadAsync('./assets/models/elf-card-back.webp')]);
+    elf.useCard(f, b);
+    return true;
+  } catch (e) { console.warn('elf card art not loaded:', e); return false; }
+}
+async function loadElfModel(url = './assets/models/elf.glb') {
+  try {
+    if (!url.startsWith('blob:')) { const head = await fetch(url, { method: 'HEAD' }); if (!head.ok) return loadElfCard(); }
+    const gltf = await new GLTFLoader().loadAsync(url);
+    let skinned = false; gltf.scene.traverse((o) => { if (o.isSkinnedMesh) skinned = true; });
+    const size = new THREE.Box3().setFromObject(gltf.scene).getSize(new THREE.Vector3());
+    if (skinned || size.z < size.y * 0.15) { elf.useModel(gltf.scene, gltf.animations || []); return true; }
+    console.warn('elf.glb has no skinned mesh and is not a flat card; using the cutout art instead');
+  } catch (e) { console.warn('elf model not loaded:', e); }
+  return loadElfCard();
+}
+// The procedural elf is the default character. Add ?art=1 to the URL to use assets/models/elf.glb (or the cutout art) instead.
+if (new URLSearchParams(location.search).has('art')) loadElfModel();
 
 // ---------------------------------------------------------------- pendulum + card
 const swing = new THREE.Group(); swing.position.set(0, PIVOT_Y, CARD_Z); gantry.add(swing);
@@ -126,33 +153,59 @@ pend.targetAmp = 1.0;
 applyStage(true);
 
 // ---------------------------------------------------------------- UI panels
-const hud = new Panel(2.5, 0.6, 1500, 360);
-hud.mesh.position.set(0, 2.0, -3.1); hud.mesh.rotation.x = 0.1; world.add(hud.mesh);
+// Score / streak panel sits at the upper left, angled toward the player, clear of the lane and target (the elf waits on the right).
+const hud = new Panel(0.9, 0.495, 800, 440);
+world.add(hud.mesh);
+// Desktop: the HUD is pinned to the screen's top-left corner with a 20px margin.
+// VR: it floats far to the left of the lane in world space (head-locked UI is uncomfortable in a headset).
+function placeHud() {
+  if (renderer.xr.isPresenting) {
+    world.add(hud.mesh); hud.mesh.scale.setScalar(1); hud.mesh.position.set(-2.1, 1.5, -2.0); hud.mesh.rotation.set(0, 0.7, 0);
+    hud.mesh.material.depthTest = true; hud.mesh.renderOrder = 0;
+    world.add(lives.mesh); lives.mesh.scale.setScalar(1); lives.mesh.position.set(-2.0, 0.8, -1.9); lives.mesh.rotation.set(-0.15, 0.7, 0);
+    lives.mesh.material.depthTest = true; lives.mesh.renderOrder = 0;
+  } else {
+    camera.add(hud.mesh);
+    const d = 1.0, s = 0.62, halfH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * d, halfW = halfH * camera.aspect;
+    const margin = (20 / window.innerHeight) * 2 * halfH, w = 0.9 * s, h = 0.495 * s;
+    hud.mesh.scale.setScalar(s); hud.mesh.rotation.set(0, 0, 0);
+    hud.mesh.position.set(-halfW + margin + w / 2, halfH - margin - h / 2, -d);
+    hud.mesh.material.depthTest = false; hud.mesh.renderOrder = 50;
+    // Arrows / overdrive panel: bottom-left corner, same 20px margin
+    camera.add(lives.mesh);
+    const ls = 0.52, lw = 0.62 * ls, lh = 0.52 * ls;
+    lives.mesh.scale.setScalar(ls); lives.mesh.rotation.set(0, 0, 0);
+    lives.mesh.position.set(-halfW + margin + lw / 2, -halfH + margin + lh / 2, -d);
+    lives.mesh.material.depthTest = false; lives.mesh.renderOrder = 50;
+  }
+}
 const lives = new Panel(0.62, 0.52, 496, 416);
-lives.mesh.position.set(-0.62, 0.72, -0.7); lives.mesh.rotation.set(-0.35, 0.5, 0); world.add(lives.mesh);
+world.add(lives.mesh); // positioned by placeHud()
 const menu = new Panel(1.6, 1.45, 1024, 930);
 menu.mesh.position.set(-1.25, 1.38, -2.3); menu.mesh.rotation.y = 0.5; world.add(menu.mesh);
 const flags = { hud: true, lives: true, menu: true };
 
 function drawHud() {
   const c = hud.begin();
-  c.fillStyle = 'rgba(8,14,30,0.62)'; roundRect(c, 4, 4, 1492, 352, 44); c.fill();
+  c.fillStyle = 'rgba(8,14,30,0.7)'; roundRect(c, 4, 4, 792, 432, 40); c.fill();
   c.strokeStyle = 'rgba(255,255,255,0.25)'; c.lineWidth = 4; c.stroke();
-  // menu / settings
-  c.fillStyle = hud.hover === 'menu' ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.14)'; roundRect(c, 30, 30, 330, 120, 28); c.fill();
-  c.fillStyle = '#fff'; c.fillRect(70, 62, 14, 56); c.fillRect(100, 62, 14, 56);
-  text(c, 'MENU', 140, 92, { size: 52 });
-  hud.button('menu', 30, 30, 330, 120);
-  // streak
-  text(c, 'STREAK', 590, 82, { size: 40, color: '#ffd7a0', align: 'right' });
-  drawFlame(c, 640, 88, 38);
-  text(c, String(G.streak), 700, 88, { size: 88, color: G.streak >= 5 ? '#ffb23a' : '#ffffff' });
-  // score for this run + best ever (best is a max, not a running total)
-  text(c, 'SCORE', 1440, 50, { size: 34, color: '#ffd7a0', align: 'right' });
-  text(c, G.score.toLocaleString(), 1440, 112, { size: 78, color: '#ffe58a', align: 'right' });
-  text(c, `BEST ${Math.max(save.bestScore, G.score).toLocaleString()}`, 1440, 176, { size: 38, color: G.score > save.bestScore ? '#7dff9a' : '#9fc9e8', align: 'right' });
+  // menu / settings (top-left of the panel)
+  c.fillStyle = hud.hover === 'menu' ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.14)'; roundRect(c, 24, 24, 250, 86, 26); c.fill();
+  c.fillStyle = '#fff'; c.fillRect(54, 46, 12, 42); c.fillRect(80, 46, 12, 42);
+  text(c, 'MENU', 112, 68, { size: 42 });
+  hud.button('menu', 24, 24, 250, 86);
   // stage
-  text(c, `STAGE ${G.stage}  -  "${stageName()}"`, 750, 262, { size: 70, color: '#cfe8ff', align: 'center' });
+  text(c, `STAGE ${G.stage}`, 776, 54, { size: 50, color: '#ffffff', align: 'right' });
+  text(c, stageName(), 776, 100, { size: 32, color: '#cfe8ff', align: 'right', weight: 600 });
+  // streak (left) and score (right)
+  text(c, 'STREAK', 40, 176, { size: 34, color: '#ffd7a0' });
+  drawFlame(c, 70, 270, 42);
+  text(c, String(G.streak), 128, 272, { size: 120, color: G.streak >= 5 ? '#ffb23a' : '#ffffff' });
+  text(c, 'SCORE', 776, 176, { size: 34, color: '#ffd7a0', align: 'right' });
+  text(c, G.score.toLocaleString(), 776, 250, { size: 80, color: '#ffe58a', align: 'right' });
+  // best is a max across runs, not a running total
+  text(c, `BEST ${Math.max(save.bestScore, G.score).toLocaleString()}`, 776, 330, { size: 40, color: G.score > save.bestScore ? '#7dff9a' : '#9fc9e8', align: 'right' });
+  if (G.streak > 0) text(c, G.streak >= 10 ? 'STORM ARROWS' : G.streak >= 6 ? 'ARROWS ON FIRE' : G.streak >= 3 ? 'HEATING UP' : '', 40, 388, { size: 30, color: '#ffb347', weight: 700 });
   hud.end();
 }
 
@@ -260,6 +313,7 @@ function drawMenu() {
 function refreshUi(force) {
   const showMenu = G.state !== 'playing';
   if (menu.mesh.visible !== showMenu) { menu.mesh.visible = showMenu; flags.menu = true; }
+  if (hud.mesh.visible !== !showMenu) { hud.mesh.visible = !showMenu; } // the menu panel already shows score/best, so hide the HUD behind it
   if (flags.hud || force) { drawHud(); flags.hud = false; }
   if (flags.menu && showMenu) { drawMenu(); flags.menu = false; }
   if (flags.lives || G.overdrive >= OVERDRIVE_MAX) { drawLives(); flags.lives = false; }
@@ -670,8 +724,9 @@ function recenter() {
   world.updateMatrixWorld(true);
 }
 let recenterIn = 0;
-renderer.xr.addEventListener('sessionstart', () => { recenterIn = 40; document.getElementById('hint').style.display = 'none'; });
+renderer.xr.addEventListener('sessionstart', () => { placeHud(); recenterIn = 40; document.getElementById('hint').style.display = 'none'; });
 renderer.xr.addEventListener('sessionend', () => {
+  placeHud();
   world.position.set(0, 0, 0); world.rotation.set(0, 0, 0);
   camera.position.copy(DESK_CAM); camera.lookAt(DESK_LOOK);
   document.getElementById('hint').style.display = '';
@@ -893,13 +948,14 @@ function spawnRing(z) {
 }
 
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+  camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); placeHud();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
 syncLoadout();
+placeHud();
 refreshUi(true);
 renderer.setAnimationLoop(animate);
 
 // handy for debugging from the console / automated checks
-window.__game = { G, save, elf, startRun, fireArrow, pend, cardState, onPress, releaseDraw, activate, camera, spawnPerk, perkOrbs, applyStage, collectPerk, endRun };
+window.__game = { G, save, elf, startRun, fireArrow, pend, cardState, onPress, releaseDraw, activate, camera, loadElfModel, spawnPerk, perkOrbs, applyStage, collectPerk, endRun };

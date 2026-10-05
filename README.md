@@ -1,7 +1,7 @@
 # Elf Archery
 
 Hands-first WebXR archery game for Meta Quest (Meta VR Start Developer Competition 2026, Gaming track).
-A kneeling half-elf ranger (procedural, inspired by the stoic half-elf archer archetype) loosens arrows through
+A kneeling elven archer (procedural, rebuilt from my own reference art: long golden hair, silver circlet and pauldrons, green cape, tall pointed ears) loosens arrows through
 the egg-shaped cutout of a swinging target card.
 
 ## Motivation
@@ -38,9 +38,7 @@ scripted playthroughs.
   so it also runs offline once served.
 - **Input:** WebXR `select` events, which fire on a hand-tracking pinch, drive draw and release. The same
   pinch ray presses in-world menu buttons. Mouse and Space provide a desktop fallback for development.
-- **Character:** the elf is assembled from primitives (capsules, spheres, cones). Arms use two-bone IK to
-  follow the bow hand and the drawn string; ears, blinking, eyebrows and mouth shapes drive expression, and
-  the body turns to face the player when celebrating or reacting.
+- **Character:** the elf is assembled from primitives (spheres, cones, cylinders) to match three reference views (front, side, back): long golden hair with front braids, silver circlet with an emerald, layered silver pauldrons, green bodice over a brown corset, green cape, leather bracers and thigh-high boots with silver knee guards. Arms use two-bone IK to follow the bow hand and the drawn string; ears, blinking, eyebrows and mouth shapes drive expression, and the body turns to face the player when celebrating or reacting.
 - **Gameplay model:** the card hangs on a pendulum whose period, arc and cutout size scale with the stage.
   Each shot is tested at the exact moment the arrow tip crosses the card plane, using the card's position at
   that sub-frame time and an ellipse test in the card's tilted frame. That gives Perfect, Clip or Miss.
@@ -97,6 +95,27 @@ npm start       # http://localhost:8080
 | `src/env.js` | the ten stage environments and their ambient particle recipes |
 | `src/audio.js` | synthesized SFX (no audio assets) |
 | `src/particles.js`, `src/panel.js` | instanced particles, canvas UI panels |
+
+## Using a real 3D character (.glb)
+
+The default character is the built-in procedural elf. A real model is only used when you open the game with `?art=1` (for example `http://localhost:8080/?art=1`). The procedural elf can only approximate painted reference art; to use a faithful model:
+
+1. Generate or commission a 3D model from the front / side / back views in `assets/elf-views/` using an
+   image-to-3D tool that accepts several views (for example Tripo, Meshy, Rodin or Hunyuan3D), or have a 3D artist make it.
+   Export it as **glTF binary (.glb)**, Y-up. Check the tool's license terms for commercial use / competition entry.
+2. Save it as `assets/models/elf.glb`. The game loads it automatically and replaces the procedural elf; if the file is
+   missing, the procedural elf is used.
+3. The model is auto-scaled to about 1.15 m (so her head stays below a seated player's eye line), stood on the plinth
+   and turned to face the lane. If it has animation clips, one named like "idle" or "stand" (otherwise the first) loops.
+   The bow, string, arrows, glow and halo are still drawn by the game.
+   The game only accepts `elf.glb` if it contains a **skinned mesh** (or is a flat image card). Otherwise it ignores
+   the file and shows the cutout art from `assets/models/elf-card-front.webp` / `elf-card-back.webp` instead.
+4. **Flat image cards are supported too** (a thin slab textured with the art, like `assets/models/elf.glb` with a front
+   and a back image). The game fixes the squashed aspect and upside-down texture those exports have, cuts out the
+   transparent background, shows her back while aiming (the player stands behind her) and flips to her front when she
+   reacts. She stands beside the lane; the bow is drawn separately. Outfit recolors become a light tint on a card.
+5. A static model will not move its arms; for the draw/release animation the model needs a rig, and the arm and head
+   bones then need to be wired to the bow (ask for that as a follow-up).
 
 ## Notes
 
