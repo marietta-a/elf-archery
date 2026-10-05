@@ -92,3 +92,22 @@ export function drawArrowIcon(ctx, x, y, len, color, broken = false) {
   }
   ctx.restore();
 }
+
+// Word-wrap helper for canvas text: returns the lines that fit in maxW.
+export function wrapLines(ctx, str, maxW, size, weight = 600, font = 'system-ui, "Segoe UI", sans-serif') {
+  ctx.font = `${weight} ${size}px ${font}`;
+  const words = String(str).split(' '); const lines = []; let line = '';
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = w; } else line = test;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+export function drawLock(ctx, x, y, s, color = '#ffe58a') {
+  ctx.save(); ctx.translate(x, y); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = s * 0.14;
+  ctx.beginPath(); ctx.arc(0, -s * 0.25, s * 0.28, Math.PI, 0); ctx.stroke();
+  roundRect(ctx, -s * 0.42, -s * 0.2, s * 0.84, s * 0.62, s * 0.1); ctx.fill();
+  ctx.restore();
+}

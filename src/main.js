@@ -9,7 +9,8 @@ import { buildScenery, buildGantry, buildEggStation, AIM_X, AIM_Y, ELF_Z, CARD_Z
 import { buildCard, buildChain, layoutChain } from './card.js';
 import { Particles } from './particles.js';
 import { ENVS, AMBIENT } from './env.js';
-import { Panel, roundRect, text, drawCoin, drawFlame, drawArrowIcon } from './panel.js';
+import { createArmory, ARMORY_W, ARMORY_H, ARMORY_WORLD_W } from './armory.js';
+import { Panel, roundRect, text, drawCoin, drawFlame, drawArrowIcon, wrapLines } from './panel.js';
 
 // ---------------------------------------------------------------- setup
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -41,7 +42,7 @@ const particles = new Particles(900); world.add(particles.mesh);
 // ---------------------------------------------------------------- persistent save
 const SAVE_KEY = 'elf-archery-xr-v1';
 const save = (() => {
-  const def = { coins: 120, bows: ['elven'], packs: ['medieval'], bow: 'elven', pack: 'medieval', outfits: ['ranger'], outfit: 'ranger', best: 0, bestScore: 0, bestStage: 1 };
+  const def = { coins: 120, bows: ['elven'], packs: ['medieval'], bow: 'elven', pack: 'medieval', outfits: ['ranger'], outfit: 'ranger', ui: { large: false, voice: false }, best: 0, bestScore: 0, bestStage: 1 };
   try { return { ...def, ...JSON.parse(localStorage.getItem(SAVE_KEY) || '{}') }; } catch { return def; }
 })();
 const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { /* private mode */ } };
@@ -178,11 +179,28 @@ function placeHud() {
     lives.mesh.position.set(-halfW + margin + lw / 2, -halfH + margin + lh / 2, -d);
     lives.mesh.material.depthTest = false; lives.mesh.renderOrder = 50;
   }
+  // Menu + Armory: big, centred screens
+  const large = save.ui && save.ui.large;
+  const centred = (mesh, ww, wh, vrPos, vrScale) => {
+    if (renderer.xr.isPresenting) {
+      world.add(mesh); mesh.scale.setScalar(vrScale); mesh.position.set(...vrPos); mesh.rotation.set(0, 0, 0);
+      mesh.material.depthTest = true; mesh.renderOrder = 0;
+    } else {
+      camera.add(mesh);
+      const d = 1.0, halfH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * d, halfW = halfH * camera.aspect;
+      const sc = Math.min((0.92 * 2 * halfW) / ww, (0.88 * 2 * halfH) / wh);
+      mesh.scale.setScalar(sc); mesh.rotation.set(0, 0, 0); mesh.position.set(0, 0, -d);
+      mesh.material.depthTest = false; mesh.renderOrder = 60;
+    }
+  };
+  centred(menu.mesh, 1.6, 1.6 * 560 / 1024, [0, 1.35, -1.9], large ? 1.25 : 1);
+  if (armory) centred(armory.panel.mesh, ARMORY_WORLD_W, ARMORY_WORLD_W * ARMORY_H / ARMORY_W, [0, 1.4, -1.85], large ? 1.3 : 1);
 }
 const lives = new Panel(0.62, 0.52, 496, 416);
 world.add(lives.mesh); // positioned by placeHud()
-const menu = new Panel(1.6, 1.45, 1024, 930);
-menu.mesh.position.set(-1.25, 1.38, -2.3); menu.mesh.rotation.y = 0.5; world.add(menu.mesh);
+const menu = new Panel(1.6, 1.6 * 560 / 1024, 1024, 560);
+world.add(menu.mesh); // positioned by placeHud()
+let armory = null; // the Armory view (created below, once the upgrade orb data exists)
 const flags = { hud: true, lives: true, menu: true };
 
 function drawHud() {
@@ -242,80 +260,46 @@ function drawLives() {
   lives.end();
 }
 
-function bowStatus(b) {
-  if (save.bow === b.id) return ['EQUIPPED', '#7dff9a'];
-  if (save.bows.includes(b.id)) return ['OWNED - tap to equip', '#cfe8ff'];
-  return [`${b.cost} coins`, save.coins >= b.cost ? '#ffe58a' : '#ff8d8d'];
-}
-function packStatus(p) {
-  if (save.pack === p.id) return ['EQUIPPED', '#7dff9a'];
-  if (save.packs.includes(p.id)) return ['OWNED - tap to equip', '#cfe8ff'];
-  return [`${p.cost} coins`, save.coins >= p.cost ? '#ffe58a' : '#ff8d8d'];
-}
 let menuNote = '';
 function drawMenu() {
   const c = menu.begin();
-  c.fillStyle = 'rgba(10,16,34,0.82)'; roundRect(c, 4, 4, 1016, 922, 48); c.fill();
-  c.strokeStyle = 'rgba(160,210,255,0.5)'; c.lineWidth = 5; c.stroke();
-  const title = G.state === 'over' ? 'GAME OVER' : 'ELF ARCHERY RANGE';
-  text(c, title, 512, 62, { size: 66, color: G.state === 'over' ? '#ff8d8d' : '#ffe9b0', align: 'center' });
-  const sub = G.state === 'over' ? `${G.newBest ? 'NEW BEST!  ' : ''}Score ${G.score.toLocaleString()}  -  best ${save.bestScore.toLocaleString()}  -  longest streak ${G.bestRunStreak}`
-    : menuNote || 'Pinch & hold, release to loose. Thread the cutout - and shoot glowing orbs for upgrades!';
-  text(c, sub, 512, 118, { size: 27, color: '#cfe8ff', align: 'center', weight: 600 });
-
-  const playLabel = G.runActive ? 'RESUME' : G.state === 'over' ? 'PLAY AGAIN' : 'PLAY';
   const hv = (id) => menu.hover === id;
-  c.fillStyle = hv('play') ? '#58e07a' : '#37c75c'; roundRect(c, 40, 150, 560, 110, 30); c.fill();
-  text(c, playLabel, 320, 207, { size: 64, color: '#06240f', shadow: false, align: 'center' });
-  menu.button('play', 40, 150, 560, 110);
-  c.fillStyle = hv('recenter') ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)'; roundRect(c, 630, 150, 354, 110, 30); c.fill();
-  text(c, 'RECENTER', 807, 195, { size: 42, align: 'center' });
-  text(c, 'fits to your seat', 807, 235, { size: 24, color: '#cfe8ff', align: 'center', weight: 500, shadow: false });
-  menu.button('recenter', 630, 150, 354, 110);
+  c.fillStyle = 'rgba(6,10,24,0.94)'; roundRect(c, 4, 4, 1016, 552, 48); c.fill();
+  c.strokeStyle = 'rgba(255,255,255,0.55)'; c.lineWidth = 6; c.stroke();
+  const over = G.state === 'over';
+  text(c, over ? 'GAME OVER' : 'ELF ARCHERY RANGE', 512, 62, { size: 72, color: over ? '#ffb0b0' : '#ffe9b0', align: 'center' });
+  const sub = over ? `${G.newBest ? 'NEW BEST!  ' : ''}Score ${G.score.toLocaleString()}.  Best ${save.bestScore.toLocaleString()}.  Longest streak ${G.bestRunStreak}.`
+    : menuNote || 'Pinch and hold to draw, release to shoot. Thread the cutout, and shoot glowing orbs for upgrades.';
+  wrapLines(c, sub, 940, 36, 600).slice(0, 3).forEach((ln, k) => text(c, ln, 512, 128 + k * 44, { size: 36, color: '#e8f2ff', align: 'center', weight: 600, shadow: false }));
 
-  drawCoin(c, 70, 300, 24); text(c, `${save.coins.toLocaleString()}   -   QUIVER & BOW`, 108, 301, { size: 38, color: '#ffe58a' });
-  BOWS.forEach((b, i) => {
-    const x = 40 + (i % 2) * 484, y = 335 + Math.floor(i / 2) * 135;
-    const [label, col] = bowStatus(b);
-    c.fillStyle = hv('bow:' + b.id) ? 'rgba(255,255,255,0.26)' : 'rgba(255,255,255,0.12)'; roundRect(c, x, y, 460, 120, 24); c.fill();
-    if (save.bow === b.id) { c.strokeStyle = '#7dff9a'; c.lineWidth = 5; c.stroke(); }
-    text(c, b.name, x + 24, y + 38, { size: 36 });
-    text(c, b.blurb, x + 24, y + 76, { size: 24, color: '#b9d4ee', weight: 500, shadow: false });
-    text(c, label, x + 24, y + 103, { size: 26, color: col, shadow: false });
-    menu.button('bow:' + b.id, x, y, 460, 120);
-  });
-  text(c, 'THEME PACKS  (target card + arrow)', 40, 625, { size: 34, color: '#ffe9b0' });
-  PACKS.forEach((p, i) => {
-    const x = 40 + i * 484, y = 650;
-    const [label, col] = packStatus(p);
-    c.fillStyle = hv('pack:' + p.id) ? 'rgba(255,255,255,0.26)' : 'rgba(255,255,255,0.12)'; roundRect(c, x, y, 460, 96, 24); c.fill();
-    if (save.pack === p.id) { c.strokeStyle = '#7dff9a'; c.lineWidth = 5; c.stroke(); }
-    text(c, p.name, x + 24, y + 33, { size: 34 });
-    text(c, label, x + 24, y + 70, { size: 26, color: col, shadow: false });
-    menu.button('pack:' + p.id, x, y, 460, 96);
-  });
-  text(c, 'OUTFITS  (your elf)', 40, 790, { size: 34, color: '#ffe9b0' });
-  OUTFITS.forEach((o, i) => {
-    const x = 40 + i * 245, y = 815, w = 233;
-    const owned = save.outfits.includes(o.id);
-    const [label, col] = save.outfit === o.id ? ['EQUIPPED', '#7dff9a'] : owned ? ['OWNED', '#cfe8ff'] : [`${o.cost} coins`, save.coins >= o.cost ? '#ffe58a' : '#ff8d8d'];
-    c.fillStyle = menu.hover === 'outfit:' + o.id ? 'rgba(255,255,255,0.26)' : 'rgba(255,255,255,0.12)'; roundRect(c, x, y, w, 96, 24); c.fill();
-    if (save.outfit === o.id) { c.strokeStyle = '#7dff9a'; c.lineWidth = 5; c.stroke(); }
-    c.fillStyle = '#' + o.tunic.toString(16).padStart(6, '0'); roundRect(c, x + 14, y + 16, 22, 64, 8); c.fill();
-    c.fillStyle = '#' + o.trim.toString(16).padStart(6, '0'); roundRect(c, x + 40, y + 16, 12, 64, 6); c.fill();
-    text(c, o.name, x + 62, y + 33, { size: 25 });
-    text(c, label, x + 62, y + 68, { size: 24, color: col, shadow: false });
-    menu.button('outfit:' + o.id, x, y, w, 96);
-  });
+  const playLabel = G.runActive ? 'RESUME' : over ? 'PLAY AGAIN' : 'PLAY';
+  c.fillStyle = hv('play') ? '#ffffff' : '#37c75c'; roundRect(c, 40, 270, 590, 140, 32); c.fill();
+  text(c, playLabel, 335, 342, { size: 76, color: '#06240f', shadow: false, align: 'center' });
+  menu.button('play', 40, 270, 590, 140);
+  c.fillStyle = hv('armory') ? '#ffffff' : '#ffe9b0'; roundRect(c, 650, 270, 334, 140, 32); c.fill();
+  text(c, 'ARMORY', 817, 330, { size: 56, color: '#1b1530', shadow: false, align: 'center' });
+  text(c, 'bows, arrows, outfits', 817, 378, { size: 28, color: '#3a2e5a', shadow: false, align: 'center', weight: 700 });
+  menu.button('armory', 650, 270, 334, 140);
+
+  c.fillStyle = hv('recenter') ? '#ffffff' : 'rgba(255,255,255,0.16)'; roundRect(c, 40, 430, 470, 100, 28); c.fill();
+  c.strokeStyle = '#ffffff'; c.lineWidth = 4; c.stroke();
+  text(c, 'RECENTER VIEW', 275, 480, { size: 44, color: hv('recenter') ? '#0b1226' : '#ffffff', align: 'center', shadow: false });
+  menu.button('recenter', 40, 430, 470, 100);
+  drawCoin(c, 580, 472, 30); text(c, `${save.coins.toLocaleString()} coins`, 625, 474, { size: 48, color: '#ffe58a' });
+  text(c, `Best ${save.bestScore.toLocaleString()}`, 984, 520, { size: 30, color: '#cfe8ff', align: 'right', weight: 600, shadow: false });
   menu.end();
 }
 
 function refreshUi(force) {
-  const showMenu = G.state !== 'playing';
+  const showMenu = G.state === 'menu' || G.state === 'over', showArmory = G.state === 'armory';
   if (menu.mesh.visible !== showMenu) { menu.mesh.visible = showMenu; flags.menu = true; }
-  if (hud.mesh.visible !== !showMenu) { hud.mesh.visible = !showMenu; } // the menu panel already shows score/best, so hide the HUD behind it
+  if (armory && armory.panel.mesh.visible !== showArmory) { armory.panel.mesh.visible = showArmory; armory.dirty = true; }
+  hud.mesh.visible = G.state === 'playing'; // menus already show the score
+  lives.mesh.visible = G.state === 'playing';
+  const hintEl = document.getElementById('hint'); if (hintEl) hintEl.style.display = G.state === 'playing' && !renderer.xr.isPresenting ? '' : 'none';
   if (flags.hud || force) { drawHud(); flags.hud = false; }
   if (flags.menu && showMenu) { drawMenu(); flags.menu = false; }
+  if (armory && showArmory && armory.dirty) armory.draw();
   if (flags.lives || G.overdrive >= OVERDRIVE_MAX) { drawLives(); flags.lives = false; }
 }
 
@@ -614,6 +598,8 @@ function endRun() {
   applyStage(false);
   flags.hud = flags.menu = true;
 }
+function openArmory() { G.armoryFrom = G.state; G.state = 'armory'; menuNote = ''; flags.menu = true; sfx.click(); armory.open(); }
+function closeArmory() { G.state = G.armoryFrom || 'menu'; flags.menu = true; flags.hud = true; }
 function openMenu() { G.state = 'menu'; if (G.drawing) cancelDraw(); applyStage(false); flags.menu = flags.hud = true; sfx.click(); }
 
 function equipBow(id) {
@@ -623,6 +609,8 @@ function activate(btn) {
   const id = btn.id;
   if (id === 'play') return startRun();
   if (id === 'menu') return openMenu();
+  if (id === 'armory') return openArmory();
+  if (id.startsWith('arm:')) return armory.handle(id);
   if (id === 'recenter') { recenter(); sfx.click(); menuNote = 'View recentered.'; flags.menu = true; return; }
   if (id.startsWith('bow:')) {
     const b = BOWS.find((x) => x.id === id.slice(4));
@@ -643,11 +631,12 @@ function activate(btn) {
     persist(); syncLoadout();
   }
   flags.menu = flags.hud = true;
+  if (armory) armory.dirty = true;
 }
 
 // ---------------------------------------------------------------- input (mouse, keyboard, XR hand pinch)
 const raycaster = new THREE.Raycaster();
-const panels = () => [menu, hud, lives];
+const panels = () => (armory ? [armory.panel, menu, hud, lives] : [menu, hud, lives]);
 function pickPanels(ray) {
   raycaster.set(ray.origin, ray.direction);
   let best = null, bestDist = Infinity;
@@ -686,7 +675,10 @@ const setMouse = (e) => { mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e
 renderer.domElement.addEventListener('pointerdown', (e) => { if (renderer.xr.isPresenting) return; setMouse(e); onPress('mouse', mouseRay()); });
 window.addEventListener('pointerup', () => releaseDraw('mouse'));
 renderer.domElement.addEventListener('pointermove', (e) => { setMouse(e); desktopHover = true; });
-window.addEventListener('keydown', (e) => { if (e.code === 'Space' && !e.repeat) { e.preventDefault(); onPress('key', null); } });
+window.addEventListener('keydown', (e) => {
+  if (G.state === 'armory') { if (armory.onKey(e.code)) e.preventDefault(); return; }
+  if (e.code === 'Space' && !e.repeat) { e.preventDefault(); onPress('key', null); }
+});
 window.addEventListener('keyup', (e) => { if (e.code === 'Space') releaseDraw('key'); });
 window.addEventListener('blur', () => { if (G.drawing) cancelDraw(); });
 let desktopHover = false;
@@ -756,7 +748,7 @@ function updatePointers() {
   for (const p of panels()) {
     const h = rays.find((r) => r && r.panel === p && r.button);
     const id = h ? h.button.id : null;
-    if (p.hover !== id) { p.hover = id; if (p === menu) flags.menu = true; if (p === hud) flags.hud = true; }
+    if (p.hover !== id) { p.hover = id; if (p === menu) flags.menu = true; if (p === hud) flags.hud = true; if (armory && p === armory.panel) armory.dirty = true; }
   }
 }
 
@@ -952,10 +944,26 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+const PERK_DESC = {
+  triple: 'Your next 3 shots fire 3 arrows at once, and the best one counts.',
+  steady: 'The cutout counts as 50% bigger for your next 4 shots.',
+  slow: 'The target swings at about half speed for 10 seconds.',
+  heart: 'Gain 1 extra arrow, up to a maximum of 5.',
+  gold: 'Your next 3 shots pay triple coins, with a golden arrow.',
+  charge: 'Adds 3 to your Overdrive meter.',
+};
+armory = createArmory({
+  save, sfx, persist,
+  perks: Object.entries(PERKS).map(([id, p]) => ({ id, name: p.name, color: p.color, desc: PERK_DESC[id], icon: perkTexture(id).image })),
+  onAction: (id) => activate({ id }),
+  getNote: () => menuNote,
+  onBack: closeArmory,
+  onLayout: () => placeHud(),
+});
 syncLoadout();
 placeHud();
 refreshUi(true);
 renderer.setAnimationLoop(animate);
 
 // handy for debugging from the console / automated checks
-window.__game = { G, save, elf, startRun, fireArrow, pend, cardState, onPress, releaseDraw, activate, camera, loadElfModel, spawnPerk, perkOrbs, applyStage, collectPerk, endRun };
+window.__game = { G, save, elf, startRun, fireArrow, pend, cardState, onPress, releaseDraw, activate, camera, loadElfModel, spawnPerk, perkOrbs, applyStage, collectPerk, endRun, armory: () => armory, openArmory };

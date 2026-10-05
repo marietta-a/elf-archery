@@ -96,6 +96,19 @@ npm start       # http://localhost:8080
 | `src/audio.js` | synthesized SFX (no audio assets) |
 | `src/particles.js`, `src/panel.js` | instanced particles, canvas UI panels |
 
+## Armory (accessible collection view)
+
+From the menu, **ARMORY** opens one large screen that shows everything you can collect, with a picture of each item:
+**Bows**, **Arrows** (arrow packs with their target card, plus the streak arrows), **Outfits** (your elf wearing each one)
+and **Upgrades** (the glowing orbs). Select a card to read its name, status and description; one big button buys or equips it.
+
+Accessibility choices: large text and large hit targets; status is always spelled out with words and symbols
+(a check mark for EQUIPPED, a padlock with the price for locked), never by colour alone; high-contrast dark panels;
+a **TEXT SIZE** toggle (scales the screen up), an optional **VOICE** toggle that reads each item aloud
+(uses the browser's speech synthesis, where available), and keyboard control on desktop
+(arrow keys pick, 1-4 switch tabs, Enter buys/equips, Esc goes back). Purchases need a deliberate second press:
+selecting a card never spends coins.
+
 ## Using a real 3D character (.glb)
 
 The default character is the built-in procedural elf. A real model is only used when you open the game with `?art=1` (for example `http://localhost:8080/?art=1`). The procedural elf can only approximate painted reference art; to use a faithful model:
